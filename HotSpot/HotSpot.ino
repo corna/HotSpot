@@ -73,11 +73,17 @@ void sendRequest(const char *request, const char *fingerprint)
   }
 }
 
-void enableInterrupts()
+void enablePinInterrupts()
 {
   attachInterrupt(digitalPinToInterrupt(KEYPIN[0]), key1handler, FALLING);
   attachInterrupt(digitalPinToInterrupt(KEYPIN[1]), key2handler, FALLING);
   attachInterrupt(digitalPinToInterrupt(KEYPIN[2]), key3handler, FALLING);
+}
+void disablePinInterrupts()
+{
+  detachInterrupt(digitalPinToInterrupt(KEYPIN[0]));
+  detachInterrupt(digitalPinToInterrupt(KEYPIN[1]));
+  detachInterrupt(digitalPinToInterrupt(KEYPIN[2]));
 }
 
 void handleLock()
@@ -91,7 +97,7 @@ void handleButtons(int key)
   //Disable interrupts to avoid input bouncing
   detachInterrupt(digitalPinToInterrupt(KEYPIN[key]));
   //Complete debouncing by re-enabling interrupts
-  callAfterSecs.once(0.5, enableInterrupts);
+  callAfterSecs.once(0.5, enablePinInterrupts);
 
   Serial.printf("Digit %d = %d", currdigit, key+1);
 
@@ -163,7 +169,7 @@ void loop() {
 
   if (justLocked) {
     justLocked = false;
-    
+
     sensors.requestTemperatures();  //Blocking!!
     temperature = sensors.getTempCByIndex(0);
     dtostrf(temperature, 0, 1, temperatureStr);
@@ -177,17 +183,17 @@ void loop() {
       hotDish = false;
 
     for (unsigned int i = 0; i < 4; i++)
-      secret[i] = random(0, 3);
+      secret[i] = random(1, 4);
 
     sprintf(request, "%ssendMessage?chat_id=%d&text=Your+food+is+available+here.+The+code+for+accessing+the+food+is+%c%c%c%c.%s", API_URL_AUTH, chat_id, secret[0] + '0', secret[1] + '0', secret[2] + '0', secret[3] + '0', hotDish ? "+Hurry+up%2C+hot+dish%21" : "");
     sendRequest(request, TELEGRAM_SHA1);
 
     sprintf(request, "%ssendLocation?chat_id=%d&latitude=%s&longitude=%s", API_URL_AUTH, chat_id, latitude, longitude);
     sendRequest(request, TELEGRAM_SHA1);
-  }
-
-  if (!locked) {
-    enableInterrupts();
+    enablePinInterrupts();
     locked = true;
   }
+
+  if (!locked)
+    disablePinInterrupts();
 }
