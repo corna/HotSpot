@@ -25,7 +25,6 @@
 #define KEY3_PIN D3
 #define LOCK_PIN D4
 
-
 #define TEMP_PIN D5
 #define RLED_PIN D6
 #define GLED_PIN D7
@@ -33,10 +32,15 @@
 
 const int KEYPIN[3] = {KEY1_PIN,KEY2_PIN,KEY3_PIN};
 
+const unsigned int chat_id = 33972702;
+const char *latitude = "45.506221";
+const char *longitude = "9.166277";
+
 OneWire oneWire(TEMP_PIN);
 DallasTemperature sensors(&oneWire);
 
 bool locked = false;
+bool justLocked = false;
 int currdigit = 0;
 int secret[4] = {1,2,3,1};
 int combination[4] = {0,0,0,0};
@@ -68,12 +72,20 @@ void sendRequest(const char *request, const char *fingerprint)
     Serial.println(http.errorToString(httpCode));
   }
 }
+
 void enableInterrupts()
 {
   attachInterrupt(digitalPinToInterrupt(KEYPIN[0]), key1handler, FALLING);
   attachInterrupt(digitalPinToInterrupt(KEYPIN[1]), key2handler, FALLING);
   attachInterrupt(digitalPinToInterrupt(KEYPIN[2]), key3handler, FALLING);
 }
+
+void handleLock()
+{
+  locked = true;
+  justLocked = true;
+}
+
 void handleButtons(int key)
 {
   //Disable interrupts to avoid input bouncing
@@ -97,6 +109,7 @@ void handleButtons(int key)
     }
   }
 }
+
 bool checkSequence()
 {
   bool match = true;
@@ -109,6 +122,7 @@ bool checkSequence()
   }
   return match;
 }
+
 void key1handler(){ handleButtons(0); }
 void key2handler(){ handleButtons(1); }
 void key3handler(){ handleButtons(2); }
@@ -126,6 +140,8 @@ void setup() {
 
   digitalWrite(LED_BUILTIN, HIGH);
 
+  attachInterrupt(digitalPinToInterrupt(LOCK_PIN), handleLock, FALLING);
+
   sensors.begin();
 
   Serial.begin(115200);
@@ -141,35 +157,37 @@ void setup() {
 
 void loop() {
   char request[200];
-  const unsigned int chat_id = 33972702;
-  const unsigned int foodCode = random(0, 4) * 1000 + random(0, 4) * 100 + random(0, 4) * 10 + random(0, 4);  //FIXME
-  const char *latitude = "45.506221";
-  const char *longitude = "9.166277";
   bool hotDish = true;
   double temperature;
   char temperatureStr[6];
 
-  sensors.requestTemperatures();  //Blocking!!
-  temperature = sensors.getTempCByIndex(0);
-  dtostrf(temperature, 0, 1, temperatureStr);
+  if (justLocked) {
+    justLocked = false;
+    
+    sensors.requestTemperatures();  //Blocking!!
+    temperature = sensors.getTempCByIndex(0);
+    dtostrf(temperature, 0, 1, temperatureStr);
 
-  sprintf(request, "%s/input/%s?private_key=%s&temperature=%s", PHANT_URL, PHANT_PUBKEY, PHANT_PRIVKEY, temperatureStr);
-  sendRequest(request, "");
+    sprintf(request, "%s/input/%s?private_key=%s&temperature=%s", PHANT_URL, PHANT_PUBKEY, PHANT_PRIVKEY, temperatureStr);
+    sendRequest(request, "");
 
-  if (temperature >= 30)  //It could have been done in better ways...
-    hotDish = true;
-  else
-    hotDish = false;
+    if (temperature >= 30)  //It could have been done in better ways...
+      hotDish = true;
+    else
+      hotDish = false;
 
-  sprintf(request, "%ssendMessage?chat_id=%d&text=Your+food+is+available+here.+The+code+for+accessing+the+food+is+%d.%s", API_URL_AUTH, chat_id, foodCode, hotDish ? "+Hurry+up%2C+hot+dish%21" : "");
-  sendRequest(request, TELEGRAM_SHA1);
+    for (unsigned int i = 0; i < 4; i++)
+      secret[i] = random(0, 3);
 
-  sprintf(request, "%ssendLocation?chat_id=%d&latitude=%s&longitude=%s", API_URL_AUTH, chat_id, latitude, longitude);
-  sendRequest(request, TELEGRAM_SHA1);
+    sprintf(request, "%ssendMessage?chat_id=%d&text=Your+food+is+available+here.+The+code+for+accessing+the+food+is+%c%c%c%c.%s", API_URL_AUTH, chat_id, secret[0] + '0', secret[1] + '0', secret[2] + '0', secret[3] + '0', hotDish ? "+Hurry+up%2C+hot+dish%21" : "");
+    sendRequest(request, TELEGRAM_SHA1);
 
+    sprintf(request, "%ssendLocation?chat_id=%d&latitude=%s&longitude=%s", API_URL_AUTH, chat_id, latitude, longitude);
+    sendRequest(request, TELEGRAM_SHA1);
+  }
 
-  enableInterrupts();
-  locked = true;
-
-  delay(30000);
+  if (!locked) {
+    enableInterrupts();
+    locked = true;
+  }
 }
