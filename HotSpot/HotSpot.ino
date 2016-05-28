@@ -73,6 +73,11 @@ void sendRequest(const char *request, const char *fingerprint)
   }
 }
 
+void enableLockInterrupt()
+{
+  attachInterrupt(digitalPinToInterrupt(LOCK_PIN), handleLock, FALLING);
+}
+
 void enablePinInterrupts()
 {
   attachInterrupt(digitalPinToInterrupt(KEYPIN[0]), key1handler, FALLING);
@@ -88,6 +93,11 @@ void disablePinInterrupts()
 
 void handleLock()
 {
+  //Disable interrupts to avoid input bouncing
+  detachInterrupt(digitalPinToInterrupt(LOCK_PIN));
+  //Complete debouncing by re-enabling interrupts
+  callAfterSecs.once(0.5, enableLockInterrupt);
+
   locked = true;
   justLocked = true;
 }
@@ -146,7 +156,7 @@ void setup() {
 
   digitalWrite(LED_BUILTIN, HIGH);
 
-  attachInterrupt(digitalPinToInterrupt(LOCK_PIN), handleLock, FALLING);
+  enableLockInterrupt();
 
   sensors.begin();
 
