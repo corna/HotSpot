@@ -44,6 +44,7 @@ bool justLocked = false;
 int currdigit = 0;
 int secret[4] = {1,2,3,1};
 int combination[4] = {0,0,0,0};
+bool wrongCombination = false;
 
 Ticker callAfterSecs;
 
@@ -98,8 +99,11 @@ void handleLock()
   //Complete debouncing by re-enabling interrupts
   callAfterSecs.once(0.5, enableLockInterrupt);
 
-  locked = true;
-  justLocked = true;
+  if (!locked) {
+    locked = true;
+    
+    justLocked = true;
+  }
 }
 
 void handleButtons(int key)
@@ -126,6 +130,16 @@ void handleButtons(int key)
   }
 }
 
+void blinkled()
+{
+  digitalWrite(RLED_PIN, LOW);
+  delay(100);
+  digitalWrite(RLED_PIN, HIGH);
+  delay(100);
+  digitalWrite(RLED_PIN, LOW);
+  delay(100);
+  digitalWrite(RLED_PIN, HIGH);
+}
 bool checkSequence()
 {
   bool match = true;
@@ -133,11 +147,13 @@ bool checkSequence()
     if(combination[digit] != secret[digit]) {
       match = false;
       Serial.println("Wrong combination");
+      wrongCombination = true;
       break;
     }
   }
   return match;
 }
+
 
 void key1handler(){ handleButtons(0); }
 void key2handler(){ handleButtons(1); }
@@ -150,13 +166,12 @@ void setup() {
   pinMode(KEY3_PIN, INPUT); //On-board pullup
   pinMode(LOCK_PIN, INPUT); //On-board pullup
   pinMode(TEMP_PIN, INPUT);
-  pinMode(RLED_PIN, INPUT_PULLUP);
-  pinMode(GLED_PIN, INPUT_PULLUP);
+  pinMode(RLED_PIN, OUTPUT);
+  pinMode(GLED_PIN, OUTPUT);
   pinMode(SERVO_PIN, OUTPUT); //On-board pulldown
 
-  digitalWrite(LED_BUILTIN, HIGH);
-
   enableLockInterrupt();
+  digitalWrite(LED_BUILTIN, HIGH);
 
   sensors.begin();
 
@@ -177,6 +192,11 @@ void loop() {
   double temperature;
   char temperatureStr[6];
 
+  if (wrongCombination) {
+    wrongCombination = false;
+    blinkled();
+  }
+
   if (justLocked) {
     justLocked = false;
 
@@ -187,7 +207,7 @@ void loop() {
     sprintf(request, "%s/input/%s?private_key=%s&temperature=%s", PHANT_URL, PHANT_PUBKEY, PHANT_PRIVKEY, temperatureStr);
     sendRequest(request, "");
 
-    if (temperature >= 30)  //It could have been done in better ways...
+    if (temperature >= 31)  //It could have been done in better ways...
       hotDish = true;
     else
       hotDish = false;
@@ -204,6 +224,13 @@ void loop() {
     locked = true;
   }
 
-  if (!locked)
+  if (locked) {
+    digitalWrite(GLED_PIN, LOW);
+    digitalWrite(RLED_PIN, HIGH);
+  }
+  else {
     disablePinInterrupts();
+    digitalWrite(GLED_PIN, HIGH);
+    digitalWrite(RLED_PIN, LOW);
+  }
 }
